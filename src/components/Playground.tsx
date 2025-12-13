@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Settings, Code, MessageSquare, Search, Calculator, Globe, FileText, Loader2 } from "lucide-react";
+import { Send, Settings, Code, MessageSquare, Search, Calculator, Globe, FileText, Loader2, Wrench, Sliders } from "lucide-react";
 import ToolCard from "./ToolCard";
 import ChatMessage from "./ChatMessage";
 import CodePreview from "./CodePreview";
+import AgentConfig from "./AgentConfig";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Tool {
@@ -41,16 +42,37 @@ const sampleMessages: Message[] = [
   { role: "assistant", content: "The current weather in San Francisco is 68°F (20°C) and partly cloudy. In Kelvin, that's approximately **293.15 K**." },
 ];
 
-const codeExample = `import { Agent, WebSearchTool, CalculatorTool } from 'agentkit';
+const Playground = () => {
+  const [tools, setTools] = useState(initialTools);
+  const [messages, setMessages] = useState<Message[]>(sampleMessages);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Agent configuration state
+  const [systemPrompt, setSystemPrompt] = useState(
+    "You are a helpful research assistant. Use available tools to find accurate information and provide comprehensive answers."
+  );
+  const [model, setModel] = useState("gpt-4-turbo");
+  const [temperature, setTemperature] = useState(0.7);
+  const [maxTokens, setMaxTokens] = useState(4096);
+  const [configTab, setConfigTab] = useState<"tools" | "settings">("tools");
+
+  // Generate dynamic code example based on config
+  const generateCodeExample = () => {
+    const enabledTools = tools.filter(t => t.enabled);
+    const toolImports = enabledTools.map(t => `${t.name.replace(' ', '')}Tool`).join(', ');
+    const toolInstances = enabledTools.map(t => `    new ${t.name.replace(' ', '')}Tool(),`).join('\n');
+    
+    return `import { Agent, ${toolImports} } from 'agentkit';
 
 const agent = new Agent({
   name: 'Research Assistant',
-  model: 'gpt-4-turbo',
-  systemPrompt: \`You are a helpful research assistant.
-    Use available tools to find accurate information.\`,
+  model: '${model}',
+  temperature: ${temperature},
+  maxTokens: ${maxTokens},
+  systemPrompt: \`${systemPrompt}\`,
   tools: [
-    new WebSearchTool(),
-    new CalculatorTool(),
+${toolInstances}
   ],
 });
 
@@ -59,12 +81,7 @@ const response = await agent.chat(
 );
 
 console.log(response.content);`;
-
-const Playground = () => {
-  const [tools, setTools] = useState(initialTools);
-  const [messages, setMessages] = useState<Message[]>(sampleMessages);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  };
 
   const toggleTool = (id: string) => {
     setTools(tools.map(tool => 
@@ -110,23 +127,61 @@ const Playground = () => {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-          {/* Tools Panel */}
-          <div className="glass rounded-2xl p-5 lg:col-span-1">
-            <div className="flex items-center gap-2 mb-4">
-              <Settings className="w-4 h-4 text-primary" />
-              <h3 className="font-semibold">Tools Configuration</h3>
+          {/* Configuration Panel */}
+          <div className="glass rounded-2xl p-5 lg:col-span-1 max-h-[600px] overflow-hidden flex flex-col">
+            {/* Config Tabs */}
+            <div className="flex gap-1 p-1 bg-secondary/30 rounded-lg mb-4">
+              <button
+                onClick={() => setConfigTab("tools")}
+                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                  configTab === "tools"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Wrench className="w-4 h-4" />
+                Tools
+              </button>
+              <button
+                onClick={() => setConfigTab("settings")}
+                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                  configTab === "settings"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Sliders className="w-4 h-4" />
+                Settings
+              </button>
             </div>
-            <div className="space-y-3">
-              {tools.map(tool => (
-                <ToolCard
-                  key={tool.id}
-                  icon={tool.icon}
-                  name={tool.name}
-                  description={tool.description}
-                  enabled={tool.enabled}
-                  onToggle={() => toggleTool(tool.id)}
+
+            {/* Config Content */}
+            <div className="flex-1 overflow-y-auto">
+              {configTab === "tools" ? (
+                <div className="space-y-3">
+                  {tools.map(tool => (
+                    <ToolCard
+                      key={tool.id}
+                      icon={tool.icon}
+                      name={tool.name}
+                      description={tool.description}
+                      enabled={tool.enabled}
+                      onToggle={() => toggleTool(tool.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <AgentConfig
+                  systemPrompt={systemPrompt}
+                  onSystemPromptChange={setSystemPrompt}
+                  model={model}
+                  onModelChange={setModel}
+                  temperature={temperature}
+                  onTemperatureChange={setTemperature}
+                  maxTokens={maxTokens}
+                  onMaxTokensChange={setMaxTokens}
                 />
-              ))}
+              )}
             </div>
           </div>
 
@@ -193,7 +248,7 @@ const Playground = () => {
               </TabsContent>
 
               <TabsContent value="code" className="mt-0">
-                <CodePreview code={codeExample} />
+                <CodePreview code={generateCodeExample()} />
               </TabsContent>
             </Tabs>
           </div>
