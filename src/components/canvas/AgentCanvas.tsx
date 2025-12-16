@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useState, useRef, useMemo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -18,9 +18,12 @@ import '@xyflow/react/dist/style.css';
 import { nodeTypes } from './nodes';
 import CanvasSidebar from './CanvasSidebar';
 import CanvasToolbar from './CanvasToolbar';
+import CodeModal from './CodeModal';
+import PreviewPanel from './PreviewPanel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Code, Play, Pencil } from 'lucide-react';
+import { NodeStatus } from '@/lib/workflowSimulator';
 
 const initialNodes: Node[] = [
   {
@@ -41,6 +44,10 @@ const AgentCanvas = () => {
   const [mode, setMode] = useState<'pan' | 'select'>('select');
   const [agentName, setAgentName] = useState('My Agent');
   const [isEditingName, setIsEditingName] = useState(false);
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [showPreviewPanel, setShowPreviewPanel] = useState(false);
+  const [simulationNodeStatuses, setSimulationNodeStatuses] = useState<Map<string, NodeStatus>>(new Map());
+  const [currentSimulationNode, setCurrentSimulationNode] = useState<string | null>(null);
 
   // History for undo/redo
   const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([{ nodes: initialNodes, edges: initialEdges }]);
@@ -120,6 +127,30 @@ const AgentCanvas = () => {
     }
   }, [historyIndex, history, setNodes, setEdges]);
 
+  // Apply simulation styling to nodes
+  const styledNodes = useMemo(() => {
+    if (!showPreviewPanel) return nodes;
+    
+    return nodes.map(node => {
+      const status = simulationNodeStatuses.get(node.id);
+      const isCurrentNode = currentSimulationNode === node.id;
+      
+      let className = '';
+      if (isCurrentNode) {
+        className = 'ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse';
+      } else if (status === 'completed') {
+        className = 'ring-2 ring-green-500 ring-offset-1 ring-offset-background';
+      } else if (status === 'pending') {
+        className = 'opacity-50';
+      }
+      
+      return {
+        ...node,
+        className,
+      };
+    });
+  }, [nodes, simulationNodeStatuses, currentSimulationNode, showPreviewPanel]);
+
   return (
     <div className="flex h-screen bg-[hsl(var(--canvas-bg))]">
       <CanvasSidebar />
@@ -152,11 +183,20 @@ const AgentCanvas = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="gap-2"
+              onClick={() => setShowCodeModal(true)}
+            >
               <Code className="w-4 h-4" />
               Code
             </Button>
-            <Button size="sm" className="gap-2">
+            <Button 
+              size="sm" 
+              className="gap-2"
+              onClick={() => setShowPreviewPanel(true)}
+            >
               <Play className="w-4 h-4" />
               Preview
             </Button>
@@ -166,7 +206,7 @@ const AgentCanvas = () => {
         {/* Canvas */}
         <div ref={reactFlowWrapper} className="flex-1 relative">
           <ReactFlow
-            nodes={nodes}
+            nodes={styledNodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
@@ -216,8 +256,31 @@ const AgentCanvas = () => {
             canUndo={historyIndex > 0}
             canRedo={historyIndex < history.length - 1}
           />
+
+          {/* Preview Panel */}
+          <PreviewPanel
+            open={showPreviewPanel}
+            onClose={() => {
+              setShowPreviewPanel(false);
+              setSimulationNodeStatuses(new Map());
+              setCurrentSimulationNode(null);
+            }}
+            nodes={nodes}
+            edges={edges}
+            onNodeStatusChange={setSimulationNodeStatuses}
+            onCurrentNodeChange={setCurrentSimulationNode}
+          />
         </div>
       </div>
+
+      {/* Code Modal */}
+      <CodeModal
+        open={showCodeModal}
+        onOpenChange={setShowCodeModal}
+        nodes={nodes}
+        edges={edges}
+        agentName={agentName}
+      />
     </div>
   );
 };
